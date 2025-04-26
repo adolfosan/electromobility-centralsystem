@@ -126,12 +126,20 @@ func (n *natsCentralSystemNotifier) requestHandler() {
 
 func (ncs *natsCentralSystemNotifier) Start() {
 
-	nc, err := nats.Connect(nats.DefaultURL)
-	//nc, err := nats.Connect("tls://connect.ngs.global", nats.UserCredentials("./config/nats.creds"))
-	if err != nil {
-		log.Fatal(err)
+	if os.Getenv("ENV") == "prod" {
+		nc, err := nats.Connect("tls://connect.ngs.global", nats.UserCredentials("./config/nats.creds"))
+		if err != nil {
+			log.Panic(err)
+		}
+		ncs.connection = nc
+	} else {
+		nc, err := nats.Connect(nats.DefaultURL)
+		if err != nil {
+			log.Panic(err)
+		}
+		ncs.connection = nc
 	}
-	ncs.connection = nc
+
 	go ncs.notificationFromCentralSystem()
 	go ncs.requestHandler()
 }
