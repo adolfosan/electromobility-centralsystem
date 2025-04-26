@@ -57,17 +57,16 @@ type CentralSystemHandler struct {
 
 func (handler *CentralSystemHandler) OnAuthorize(chargePointId string, request *core.AuthorizeRequest) (confirmation *core.AuthorizeConfirmation, err error) {
 
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("client authorized")
-
+	logDefault(chargePointId, request.GetFeatureName()).Infof("client authorized")
 	return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted)), nil
 }
 
 func (handler *CentralSystemHandler) OnBootNotification(chargePointId string, request *core.BootNotificationRequest) (confirmation *core.BootNotificationConfirmation, err error) {
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("boot confirmed")
-	//fmt.Println(request)
+	logDefault(chargePointId, request.GetFeatureName()).Infof("boot confirmed")
+	fmt.Println(request)
 	var data = make(map[string]interface{})
 	data["chargePointId"] = chargePointId
-
+	
 	bt, _ := json.Marshal(request)
 	json.Unmarshal(bt, &data)
 
@@ -80,7 +79,7 @@ func (handler *CentralSystemHandler) OnBootNotification(chargePointId string, re
 }
 
 func (handler *CentralSystemHandler) OnDataTransfer(chargePointId string, request *core.DataTransferRequest) (confirmation *core.DataTransferConfirmation, err error) {
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("received data %d", request.Data)
+	logDefault(chargePointId, request.GetFeatureName()).Infof("received data %d", request.Data)
 
 	var m = make(map[string]interface{})
 	m["chargePointId"] = chargePointId
@@ -93,7 +92,7 @@ func (handler *CentralSystemHandler) OnDataTransfer(chargePointId string, reques
 }
 
 func (handler *CentralSystemHandler) OnHeartbeat(chargePointId string, request *core.HeartbeatRequest) (confirmation *core.HeartbeatConfirmation, err error) {
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("heartbeat handled")
+	logDefault(chargePointId, request.GetFeatureName()).Infof("heartbeat handled")
 	var currentTime *types.DateTime = types.NewDateTime(time.Now())
 
 	var m = make(map[string]interface{})
@@ -108,7 +107,7 @@ func (handler *CentralSystemHandler) OnHeartbeat(chargePointId string, request *
 }
 
 func (handler *CentralSystemHandler) OnMeterValues(chargePointId string, request *core.MeterValuesRequest) (confirmation *core.MeterValuesConfirmation, err error) {
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("received meter values for connector %v. Meter values:\n", request.ConnectorId)
+	logDefault(chargePointId, request.GetFeatureName()).Infof("received meter values for connector %v. Meter values:\n", request.ConnectorId)
 
 	var data = make(map[string]interface{})
 	data["chargePointId"] = chargePointId
@@ -116,14 +115,16 @@ func (handler *CentralSystemHandler) OnMeterValues(chargePointId string, request
 	bt, _ := json.Marshal(request)
 	json.Unmarshal(bt, &data)
 
+	fmt.Printf("%+v \n", data)
+
 	handler.notification <- notifier.Notification{
 		Topic: "meter.values",
 		Data:  data,
 	}
 
-	/*for _, mv := range request.MeterValue {
+	for _, mv := range request.MeterValue {
 		logDefault(chargePointId, request.GetFeatureName()).Printf("%v", mv)
-	}*/
+	}
 	return core.NewMeterValuesConfirmation(), nil
 }
 
@@ -228,7 +229,7 @@ func (handler *CentralSystemHandler) OnDiagnosticsStatusNotification(chargePoint
 		return nil, fmt.Errorf("unknown charge point %v", chargePointId)
 	}
 	info.diagnosticsStatus = request.Status
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("updated diagnostics status to %v", request.Status)
+	logDefault(chargePointId, request.GetFeatureName()).Infof("updated diagnostics status to %v", request.Status)
 	return firmware.NewDiagnosticsStatusNotificationConfirmation(), nil
 }
 
@@ -241,7 +242,7 @@ func (handler *CentralSystemHandler) OnFirmwareStatusNotification(chargePointId 
 		return nil, fmt.Errorf("unknown charge point %v", chargePointId)
 	}
 	info.firmwareStatus = request.Status
-	//logDefault(chargePointId, request.GetFeatureName()).Infof("updated firmware status to %v", request.Status)
+	logDefault(chargePointId, request.GetFeatureName()).Infof("updated firmware status to %v", request.Status)
 	return &firmware.FirmwareStatusNotificationConfirmation{}, nil
 }
 

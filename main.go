@@ -5,15 +5,16 @@ import (
 	"crypto/x509"
 	"io/ioutil"
 	"os"
-	"time"
 
 	"github.com/sirupsen/logrus"
 
-	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
-	"github.com/lorenzodonini/ocpp-go/ws"
-
 	"central_system/actions"
-	natsNotifier "central_system/notifier/nats"
+	notifier "central_system/notifier/nats"
+	"time"
+
+	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
+	"github.com/lorenzodonini/ocpp-go/ocppj"
+	"github.com/lorenzodonini/ocpp-go/ws"
 )
 
 const (
@@ -37,6 +38,11 @@ const (
 	RESET                    = "reset"
 	REMOTE_START_TRANSACTION = "remote.start.transaction"
 	REMOTE_STOP_TRANSACTION  = "remote.stop.transaction"
+	UNLOCK_CONNECTOR         = "unlock.connector"
+	CLEAR_CACHE              = "clear.cache"
+	CLEAR_CHARGING_PROFILE   = "clear.charging.profile"
+	GET_COMPOSITE_SCHEDULE   = "get.composite.schedule"
+	SET_CHARGING_PROFILE     = "set.charging.profile"
 )
 
 var log *logrus.Logger
@@ -91,11 +97,14 @@ func main() {
 	//handler := &CentralSystemHandler{chargePoints: map[string]*ChargePointState{}}
 	csHandler := NewCentralSystemHandler()
 	centralSystem.SetCoreHandler(csHandler)
-	centralSystem.SetLocalAuthListHandler(csHandler)
+	/*centralSystem.SetLocalAuthListHandler(csHandler)
 	centralSystem.SetFirmwareManagementHandler(csHandler)
 	centralSystem.SetReservationHandler(csHandler)
 	centralSystem.SetRemoteTriggerHandler(csHandler)
-	centralSystem.SetSmartChargingHandler(csHandler)
+	centralSystem.SetSmartChargingHandler(csHandler)*/
+
+	ocppj.SetLogger(log)
+	ocppj.SetMessageValidation(false)
 
 	centralSystem.SetNewChargePointHandler(func(chargePoint ocpp16.ChargePointConnection) {
 		csHandler.chargePoints[chargePoint.ID()] = &ChargePoint{connectors: map[int]*Connector{}, transactions: map[int]*Transaction{}}
@@ -108,7 +117,7 @@ func main() {
 		delete(csHandler.chargePoints, chargePoint.ID())
 	})
 
-	natsNotifier := natsNotifier.New()
+	natsNotifier := notifier.New()
 	natsNotifier.SetChannel(csHandler.NotificationChannel())
 	natsNotifier.SetTimeout(3 * time.Minute)
 	log.Printf("Esperar respuesta de las solicitudes: %v", natsNotifier.Timeout().String())
@@ -116,8 +125,9 @@ func main() {
 	//Usando las funciones del Callbacks.go
 
 	coreProfileActions := actions.InitializeCoreProfileActions(centralSystem)
-	localAuthProfileActions := actions.InitializeLocalAuthProfileActions(centralSystem)
-	reservationProfileActions := actions.InitializeReservationProfileActions(centralSystem)
+	//localAuthProfileActions := actions.InitializeLocalAuthProfileActions(centralSystem)
+	//reservationProfileActions := actions.InitializeReservationProfileActions(centralSystem)
+	//smartChargingProfilesActions := actions.InitializeSmartChargingProfileActions(centralSystem)
 
 	natsNotifier.AddHandler(RESET, coreProfileActions.Reset)
 	natsNotifier.AddHandler(GET_CONFIGURATION, coreProfileActions.GetConfiguration)
@@ -125,12 +135,18 @@ func main() {
 	natsNotifier.AddHandler(CHANGE_AVAILABILITY, coreProfileActions.ChangeAvailability)
 	natsNotifier.AddHandler(REMOTE_START_TRANSACTION, coreProfileActions.RemoteStartTransaction)
 	natsNotifier.AddHandler(REMOTE_STOP_TRANSACTION, coreProfileActions.RemoteStopTransaction)
+	natsNotifier.AddHandler(UNLOCK_CONNECTOR, coreProfileActions.UnlockConnector)
+	natsNotifier.AddHandler(CLEAR_CACHE, coreProfileActions.ClearCache)
 
-	natsNotifier.AddHandler(SEND_LOCAL_LIST_VERSION, localAuthProfileActions.SendLocalListVersion)
+	/*natsNotifier.AddHandler(SEND_LOCAL_LIST_VERSION, localAuthProfileActions.SendLocalListVersion)
 	natsNotifier.AddHandler(GET_LOCAL_LIST_VERSION, localAuthProfileActions.GetLocalListVersion)
 
 	natsNotifier.AddHandler(RESERVE_NOW, reservationProfileActions.ReserveNow)
 	natsNotifier.AddHandler(CANCEL_RESERVATION, reservationProfileActions.CancelReservation)
+
+	natsNotifier.AddHandler(CLEAR_CHARGING_PROFILE, smartChargingProfilesActions.ClearChargingProfile)
+	natsNotifier.AddHandler(GET_COMPOSITE_SCHEDULE, smartChargingProfilesActions.GetCompositeSchedule)
+	natsNotifier.AddHandler(SET_CHARGING_PROFILE, smartChargingProfilesActions.SetChargingProfile)*/
 
 	natsNotifier.Start()
 	defer natsNotifier.Stop()

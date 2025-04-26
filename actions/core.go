@@ -9,8 +9,11 @@ import (
 	"github.com/go-playground/validator"
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/sirupsen/logrus"
 )
+
+var chargingProfileId int = 0
 
 func logDefault(chargePointId string, feature string) *logrus.Entry {
 	return logrus.WithFields(logrus.Fields{"client": chargePointId, "message": feature})
@@ -29,7 +32,7 @@ func InitializeCoreProfileActions(centralSystem ocpp16.CentralSystem) CoreProfil
 	}
 }
 
-func (this *CoreProfileActions) Reset(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) Reset(chargePointID string, payload []byte, responseChannel chan common.Response) {
 
 	var response common.Response
 
@@ -67,7 +70,7 @@ func (this *CoreProfileActions) Reset(chargePointID string, payload []byte, resp
 				message = fmt.Sprintf("Se ha aceptado el reinicio por el modo: %v", resetType)
 			case core.ResetStatusRejected:
 				//logDefault(chargePointID, confirmation.GetFeatureName()).Infof("couldn't cancel reservation %v", request.Type)
-				message = fmt.Sprintf(" No se ha aceptado el reinicio.")
+				message = " No se ha aceptado el reinicio."
 			}
 			payload["status"] = status
 			payload["message"] = message
@@ -77,7 +80,7 @@ func (this *CoreProfileActions) Reset(chargePointID string, payload []byte, resp
 		responseChannel <- response
 	}
 
-	e := this.centralSystem.Reset(chargePointID, cb, resetType)
+	e := cp.centralSystem.Reset(chargePointID, cb, resetType)
 	if e != nil {
 		response.Err = &common.Error{
 			Code:    "command.message.not.send",
@@ -87,14 +90,14 @@ func (this *CoreProfileActions) Reset(chargePointID string, payload []byte, resp
 	}
 }
 
-func (this *CoreProfileActions) GetConfiguration(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) GetConfiguration(chargePointID string, payload []byte, responseChannel chan common.Response) {
 
 	var response common.Response
 
 	var Validator = validator.New()
 	request := &core.GetConfigurationRequest{}
-
 	json.Unmarshal(payload, request)
+
 	err := Validator.Struct(request)
 
 	if err != nil {
@@ -126,7 +129,7 @@ func (this *CoreProfileActions) GetConfiguration(chargePointID string, payload [
 		responseChannel <- response
 	}
 
-	e := this.centralSystem.GetConfiguration(chargePointID, cb, request.Key)
+	e := cp.centralSystem.GetConfiguration(chargePointID, cb, request.Key)
 	if e != nil {
 		response.Err = &common.Error{
 			Code:    "command.message.not.send",
@@ -136,7 +139,7 @@ func (this *CoreProfileActions) GetConfiguration(chargePointID string, payload [
 	}
 }
 
-func (this *CoreProfileActions) ChangeConfiguration(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) ChangeConfiguration(chargePointID string, payload []byte, responseChannel chan common.Response) {
 	var response common.Response
 
 	var Validator = validator.New()
@@ -156,7 +159,7 @@ func (this *CoreProfileActions) ChangeConfiguration(chargePointID string, payloa
 
 	cb := func(confirmation *core.ChangeConfigurationConfirmation, err error) {
 		if err != nil {
-			//logDefault(chargePointID, core.ChangeConfigurationFeatureName).Errorf("error on request: %v", err)
+			logDefault(chargePointID, core.ChangeConfigurationFeatureName).Errorf("error on request: %v", err)
 		} else if confirmation.Status == core.ConfigurationStatusNotSupported {
 			response.Err = &common.Error{
 				Code:    "command.change.configuration.key.unsupported",
@@ -175,7 +178,7 @@ func (this *CoreProfileActions) ChangeConfiguration(chargePointID string, payloa
 		responseChannel <- response
 	}
 
-	e := this.centralSystem.ChangeConfiguration(chargePointID, cb, request.Key, request.Value)
+	e := cp.centralSystem.ChangeConfiguration(chargePointID, cb, request.Key, request.Value)
 	if e != nil {
 		//logDefault(chargePointID, localauth.GetLocalListVersionFeatureName).Errorf("couldn't send message: %v", e)
 		response.Err = &common.Error{
@@ -186,7 +189,7 @@ func (this *CoreProfileActions) ChangeConfiguration(chargePointID string, payloa
 	}
 }
 
-func (this *CoreProfileActions) ChangeAvailability(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) ChangeAvailability(chargePointID string, payload []byte, responseChannel chan common.Response) {
 	var response common.Response
 
 	request := &core.ChangeAvailabilityRequest{}
@@ -232,7 +235,7 @@ func (this *CoreProfileActions) ChangeAvailability(chargePointID string, payload
 		responseChannel <- response
 	}
 
-	e := this.centralSystem.ChangeAvailability(chargePointID, cb, request.ConnectorId, request.Type)
+	e := cp.centralSystem.ChangeAvailability(chargePointID, cb, request.ConnectorId, request.Type)
 	if e != nil {
 		response.Err = &common.Error{
 			Code:    "command.message.not.send",
@@ -242,7 +245,7 @@ func (this *CoreProfileActions) ChangeAvailability(chargePointID string, payload
 	}
 }
 
-func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) RemoteStartTransaction(chargePointID string, payload []byte, responseChannel chan common.Response) {
 	var response common.Response
 	var data map[string]interface{} = make(map[string]interface{})
 
@@ -256,7 +259,14 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 		responseChannel <- response
 		return
 	}
-	request := &core.RemoteStartTransactionRequest{}
+
+	var idTag string = ""
+
+	var connectorId *int = new(int)
+	*connectorId = -1
+
+	var duration *int = new(int)
+	*duration = -1
 
 	if _, ok := data["idTag"]; !ok {
 		response.Err = &common.Error{
@@ -267,10 +277,10 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 		return
 	}
 
-	request.IdTag = fmt.Sprint(data["idTag"])
+	idTag = fmt.Sprint(data["idTag"])
 
 	if _, ok := data["connectorId"]; ok {
-		connectorId, errInt := strconv.ParseInt(fmt.Sprint(data["connectorId"]), 10, 32)
+		ci, errInt := strconv.ParseInt(fmt.Sprint(data["connectorId"]), 10, 32)
 
 		if errInt != nil {
 			response.Err = &common.Error{
@@ -279,7 +289,7 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 			}
 			responseChannel <- response
 			return
-		} else if connectorId < 1 {
+		} else if ci < 1 {
 			response.Err = &common.Error{
 				Code:    "command.remote.start.transaction",
 				Message: "connectorId must be g(0)",
@@ -287,8 +297,29 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 			responseChannel <- response
 			return
 		}
-		ci := int(connectorId)
-		request.ConnectorId = &ci
+		*connectorId = int(ci)
+	}
+
+	if _, ok := data["duration"]; ok {
+		d, errInt := strconv.ParseInt(fmt.Sprint(data["duration"]), 10, 32)
+
+		if errInt != nil {
+			response.Err = &common.Error{
+				Code:    "command.remote.start.transaction",
+				Message: "duration must be a integer",
+			}
+			responseChannel <- response
+			return
+		} else if d < 1 {
+			response.Err = &common.Error{
+				Code:    "command.remote.start.transaction",
+				Message: "duration must be g(0)",
+			}
+			responseChannel <- response
+			return
+		}
+		fmt.Println(d)
+		*duration = int(d)
 	}
 
 	cb := func(confirmation *core.RemoteStartTransactionConfirmation, err error) {
@@ -299,16 +330,44 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 
 			payload["status"] = confirmation.Status
 			response.Payload = payload
+
+			if confirmation.Status != types.RemoteStartStopStatusAccepted {
+				chargingProfileId = chargingProfileId - 1
+			}
 		}
 
 		responseChannel <- response
 
 	}
 
-	e := this.centralSystem.RemoteStartTransaction(chargePointID, cb, request.IdTag, func(req *core.RemoteStartTransactionRequest) {
-		req.ConnectorId = request.ConnectorId
-		req.ChargingProfile = request.ChargingProfile
-		fmt.Printf("+%v", req)
+	e := cp.centralSystem.RemoteStartTransaction(chargePointID, cb, idTag, func(req *core.RemoteStartTransactionRequest) {
+		chargingProfileId = chargingProfileId + 1
+		var periods []types.ChargingSchedulePeriod = []types.ChargingSchedulePeriod{
+			{
+				StartPeriod: 0,
+				Limit:       18.3,
+			},
+		}
+		req.IdTag = idTag
+		req.ConnectorId = connectorId
+		req.ChargingProfile = &types.ChargingProfile{
+			ChargingProfileId:      chargingProfileId,
+			StackLevel:             1,
+			ChargingProfilePurpose: types.ChargingProfilePurposeTxProfile,
+			ChargingProfileKind:    types.ChargingProfileKindRecurring,
+			ChargingSchedule: &types.ChargingSchedule{
+				Duration:               duration,
+				ChargingRateUnit:       types.ChargingRateUnitWatts,
+				ChargingSchedulePeriod: periods,
+			},
+		}
+		fmt.Printf("IdTag %v \n", req.IdTag)
+		fmt.Printf("ConnectorId %v \n", *req.ConnectorId)
+		fmt.Printf("ChargingProfile => id  %v \n", req.ChargingProfile.ChargingProfileId)
+		fmt.Printf("ChargingProfile => stackLevel  %v \n", req.ChargingProfile.StackLevel)
+		fmt.Printf("ChargingProfile => Schedule => duration  %v \n", *req.ChargingProfile.ChargingSchedule.Duration)
+		fmt.Printf("ChargingProfile => Schedule => rateUnit  %v \n", req.ChargingProfile.ChargingSchedule.ChargingRateUnit)
+
 	})
 
 	if e != nil {
@@ -327,7 +386,7 @@ func (this *CoreProfileActions) RemoteStartTransaction(chargePointID string, pay
 	}*/
 }
 
-func (this *CoreProfileActions) RemoteStopTransaction(chargePointID string, payload []byte, responseChannel chan common.Response) {
+func (cp *CoreProfileActions) RemoteStopTransaction(chargePointID string, payload []byte, responseChannel chan common.Response) {
 
 	var response common.Response
 
@@ -352,6 +411,13 @@ func (this *CoreProfileActions) RemoteStopTransaction(chargePointID string, payl
 		}
 		responseChannel <- response
 		return
+	} else if transactionId < 0 {
+		response.Err = &common.Error{
+			Code:    "command.remote.stop.transaction",
+			Message: "transactionId must be gte(0)",
+		}
+		responseChannel <- response
+		return
 	}
 
 	cb := func(confirmation *core.RemoteStopTransactionConfirmation, err error) {
@@ -367,7 +433,7 @@ func (this *CoreProfileActions) RemoteStopTransaction(chargePointID string, payl
 		responseChannel <- response
 	}
 
-	e := this.centralSystem.RemoteStopTransaction(chargePointID, cb, int(transactionId))
+	e := cp.centralSystem.RemoteStopTransaction(chargePointID, cb, int(transactionId))
 
 	if e != nil {
 		response.Err = &common.Error{
@@ -376,4 +442,105 @@ func (this *CoreProfileActions) RemoteStopTransaction(chargePointID string, payl
 		}
 		responseChannel <- response
 	}
+}
+
+func (cp *CoreProfileActions) UnlockConnector(chargePointID string, payload []byte, responseChannel chan common.Response) {
+	var response common.Response
+	var data map[string]interface{} = make(map[string]interface{})
+	errUnMarshal := json.Unmarshal(payload, &data)
+
+	if errUnMarshal != nil {
+		response.Err = &common.Error{
+			Code:    "command.unlock.connector",
+			Message: "Conversion no json no valida",
+		}
+		responseChannel <- response
+		return
+	}
+
+	var connectorId int
+	if _, ok := data["connectorId"]; ok {
+		ci, errInt := strconv.ParseInt(fmt.Sprint(data["connectorId"]), 10, 32)
+		if errInt != nil {
+			response.Err = &common.Error{
+				Code:    "command.unlock.connector",
+				Message: "connectorId must be an integer",
+			}
+			responseChannel <- response
+			return
+		}
+		connectorId = int(ci)
+	} else {
+		response.Err = &common.Error{
+			Code:    "command.unlock.connector",
+			Message: "connectorId is required",
+		}
+		responseChannel <- response
+		return
+	}
+
+	cb := func(confirmation *core.UnlockConnectorConfirmation, err error) {
+		if err != nil {
+			logDefault(chargePointID, core.UnlockConnectorFeatureName).Errorf("error on request: %v", err)
+		} else {
+			var payload map[string]interface{} = make(map[string]interface{})
+
+			payload["status"] = confirmation.Status
+			response.Payload = payload
+		}
+
+		responseChannel <- response
+	}
+
+	e := cp.centralSystem.UnlockConnector(chargePointID, cb, connectorId)
+
+	if e != nil {
+		response.Err = &common.Error{
+			Code:    "command.message.not.send",
+			Message: fmt.Sprintf("No se pudo enviar el comando al Punto de Carga: %v", chargePointID),
+		}
+		responseChannel <- response
+	}
+
+	/*responseChannel <- common.Response{
+		Err: &common.Error{
+			Code:    "not.implemented",
+			Message: fmt.Sprintf("La funcionalidad: UnlockConnector no esta implementada"),
+		},
+	}*/
+}
+
+func (cp *CoreProfileActions) ClearCache(chargePointID string, payload []byte, responseChannel chan common.Response) {
+
+	var response common.Response
+
+	cb := func(confirmation *core.ClearCacheConfirmation, err error) {
+		if err != nil {
+			logDefault(chargePointID, core.ClearCacheFeatureName).Errorf("error on request: %v", err)
+		} else {
+			var payload map[string]interface{} = make(map[string]interface{})
+
+			payload["status"] = confirmation.Status
+			response.Payload = payload
+		}
+
+		responseChannel <- response
+	}
+
+	e := cp.centralSystem.ClearCache(chargePointID, cb)
+
+	if e != nil {
+		response.Err = &common.Error{
+			Code:    "command.message.not.send",
+			Message: fmt.Sprintf("No se pudo enviar el comando al Punto de Carga: %v", chargePointID),
+		}
+		responseChannel <- response
+	}
+
+	/*responseChannel <- common.Response{
+		Err: &common.Error{
+			Code:    "not.implemented",
+			Message: fmt.Sprintf("La funcionalidad: ClearCache no esta implementada"),
+		},
+	}*/
 }

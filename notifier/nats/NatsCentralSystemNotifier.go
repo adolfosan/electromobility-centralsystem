@@ -29,45 +29,45 @@ type natsCentralSystemNotifier struct {
 	timeout      time.Duration              //tiempo de espera de las solicitudes
 }
 
-func (this *natsCentralSystemNotifier) SetTimeout(timeout time.Duration) {
-	this.timeout = timeout
+func (ncs *natsCentralSystemNotifier) SetTimeout(timeout time.Duration) {
+	ncs.timeout = timeout
 
 }
-func (this natsCentralSystemNotifier) Timeout() time.Duration {
-	return this.timeout
+func (ncs natsCentralSystemNotifier) Timeout() time.Duration {
+	return ncs.timeout
 }
 
-func (this *natsCentralSystemNotifier) AddHandler(action string, fn Function) {
-	this.handlers[action] = fn
+func (ncs *natsCentralSystemNotifier) AddHandler(action string, fn Function) {
+	ncs.handlers[action] = fn
 }
 
-func (this *natsCentralSystemNotifier) SetChannel(notification chan notifier.Notification) {
-	this.notification = notification
+func (ncs *natsCentralSystemNotifier) SetChannel(notification chan notifier.Notification) {
+	ncs.notification = notification
 }
 
-func (this natsCentralSystemNotifier) notificationFromCentralSystem() {
+func (ncs natsCentralSystemNotifier) notificationFromCentralSystem() {
 	for {
-		n := <-this.notification
+		n := <-ncs.notification
 		bt, err := json.Marshal(n.Data)
 
 		if err != nil {
 			log.Error(err)
 		} else {
-			this.connection.Publish(n.Topic, bt)
+			ncs.connection.Publish(n.Topic, bt)
 		}
 	}
 }
 
 // funcion asociada al patron request/reply en Nats
-func (this natsCentralSystemNotifier) requestHandler() {
+func (n *natsCentralSystemNotifier) requestHandler() {
 
 	var Validator = validator.New()
 
-	this.connection.Subscribe("request", func(m *nats.Msg) {
+	n.connection.Subscribe("request", func(m *nats.Msg) {
 
 		var command common.Command
 		json.Unmarshal(m.Data, &command)
-
+		log.Printf("RequestHandler, %+v", string(m.Data))
 		validate := Validator.Struct(&command)
 
 		if validate != nil {
@@ -77,12 +77,13 @@ func (this natsCentralSystemNotifier) requestHandler() {
 					Message: "El comando no es válido",
 				},
 			})
+			log.Errorf("%v", bt)
 			m.Respond(bt)
 			return
 
 		}
 
-		_, exists := this.handlers[command.Action]
+		_, exists := n.handlers[command.Action]
 
 		if !exists {
 			bt, _ := json.Marshal(common.Response{
@@ -91,6 +92,7 @@ func (this natsCentralSystemNotifier) requestHandler() {
 					Message: fmt.Sprintf("No existe la acción \"%v\"", command.Action),
 				},
 			})
+			log.Errorf("%v", bt)
 			m.Respond(bt)
 			return
 		}
@@ -98,44 +100,45 @@ func (this natsCentralSystemNotifier) requestHandler() {
 		var responseChannel chan common.Response = make(chan common.Response)
 		payload, _ := json.Marshal(command.Payload)
 
-		var fn Function = this.handlers[command.Action]
+		var fn Function = n.handlers[command.Action]
 
 		go fn(command.ChargePointId, payload, responseChannel)
 
 		select {
 		case response := <-responseChannel:
-			//log.Info("RESULT!!!!")
 			bt, _ := json.Marshal(response)
+			log.Printf("RequestHandler => Response, %v", string(bt))
 			m.Respond(bt)
 			break
-		case <-time.After(this.timeout):
-			//log.Error("TIMEOUT!!!!")
+		case <-time.After(n.timeout):
 			bt, _ := json.Marshal(common.Response{
 				Err: &common.Error{
 					Code:    "request.timeout",
 					Message: "Ha caducado el tiempo de respuesta de la solicitud",
 				},
 			})
+			log.Errorf("%v", bt)
 			m.Respond(bt)
 			break
 		}
 	})
 }
 
-func (this *natsCentralSystemNotifier) Start() {
+func (ncs *natsCentralSystemNotifier) Start() {
+
 	nc, err := nats.Connect(nats.DefaultURL)
+	//nc, err := nats.Connect("tls://connect.ngs.global", nats.UserCredentials("./config/nats.creds"))
 	if err != nil {
-		//log.Fatal( err)
 		log.Fatal(err)
 	}
-	this.connection = nc
-	go this.notificationFromCentralSystem()
-	go this.requestHandler()
+	ncs.connection = nc
+	go ncs.notificationFromCentralSystem()
+	go ncs.requestHandler()
 }
 
-func (this *natsCentralSystemNotifier) Stop() {
-	if this.connection != nil {
-		this.connection.Close()
+func (ncs *natsCentralSystemNotifier) Stop() {
+	if ncs.connection != nil {
+		ncs.connection.Close()
 		log.Info("NatsStopped")
 	}
 }
