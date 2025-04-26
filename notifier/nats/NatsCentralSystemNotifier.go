@@ -127,7 +127,7 @@ func (n *natsCentralSystemNotifier) requestHandler() {
 func (ncs *natsCentralSystemNotifier) Start() {
 
 	if os.Getenv("ENV") == "prod" {
-		nc, err := nats.Connect("tls://connect.ngs.global", nats.Name("Official Token"), nats.Token(os.Getenv("TOKEN")))
+		nc, err := nats.Connect("tls://connect.ngs.global", nats.UserCredentials("./config/nats.creds"))
 		if err != nil {
 			log.Panic(err)
 		}
