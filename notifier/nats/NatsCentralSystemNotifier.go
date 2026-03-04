@@ -121,7 +121,7 @@ func (this natsCentralSystemNotifier) requestHandler() {
 }
 
 func (this *natsCentralSystemNotifier) Start() {
-	nc, err := nats.Connect(nats.DefaultURL)
+	nc, err := nats.Connect("https://electromobility-nats.onrender.com/")
 	if err != nil {
 		log.Fatal(err)
 	}
