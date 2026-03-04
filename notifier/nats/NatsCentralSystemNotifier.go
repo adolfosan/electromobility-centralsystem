@@ -29,45 +29,45 @@ type natsCentralSystemNotifier struct {
 	timeout      time.Duration              //tiempo de espera de las solicitudes
 }
 
-func (ncs *natsCentralSystemNotifier) SetTimeout(timeout time.Duration) {
-	ncs.timeout = timeout
+func (this *natsCentralSystemNotifier) SetTimeout(timeout time.Duration) {
+	this.timeout = timeout
 
 }
-func (ncs natsCentralSystemNotifier) Timeout() time.Duration {
-	return ncs.timeout
+func (this natsCentralSystemNotifier) Timeout() time.Duration {
+	return this.timeout
 }
 
-func (ncs *natsCentralSystemNotifier) AddHandler(action string, fn Function) {
-	ncs.handlers[action] = fn
+func (this *natsCentralSystemNotifier) AddHandler(action string, fn Function) {
+	this.handlers[action] = fn
 }
 
-func (ncs *natsCentralSystemNotifier) SetChannel(notification chan notifier.Notification) {
-	ncs.notification = notification
+func (this *natsCentralSystemNotifier) SetChannel(notification chan notifier.Notification) {
+	this.notification = notification
 }
 
-func (ncs natsCentralSystemNotifier) notificationFromCentralSystem() {
+func (this natsCentralSystemNotifier) notificationFromCentralSystem() {
 	for {
-		n := <-ncs.notification
+		n := <-this.notification
 		bt, err := json.Marshal(n.Data)
 
 		if err != nil {
 			log.Error(err)
 		} else {
-			ncs.connection.Publish(n.Topic, bt)
+			this.connection.Publish(n.Topic, bt)
 		}
 	}
 }
 
 // funcion asociada al patron request/reply en Nats
-func (n *natsCentralSystemNotifier) requestHandler() {
+func (this natsCentralSystemNotifier) requestHandler() {
 
 	var Validator = validator.New()
 
-	n.connection.Subscribe("request", func(m *nats.Msg) {
+	this.connection.Subscribe("request", func(m *nats.Msg) {
 
 		var command common.Command
 		json.Unmarshal(m.Data, &command)
-		log.Printf("RequestHandler, %+v", string(m.Data))
+
 		validate := Validator.Struct(&command)
 
 		if validate != nil {
@@ -77,13 +77,12 @@ func (n *natsCentralSystemNotifier) requestHandler() {
 					Message: "El comando no es válido",
 				},
 			})
-			log.Errorf("%v", bt)
 			m.Respond(bt)
 			return
 
 		}
 
-		_, exists := n.handlers[command.Action]
+		_, exists := this.handlers[command.Action]
 
 		if !exists {
 			bt, _ := json.Marshal(common.Response{
@@ -92,7 +91,6 @@ func (n *natsCentralSystemNotifier) requestHandler() {
 					Message: fmt.Sprintf("No existe la acción \"%v\"", command.Action),
 				},
 			})
-			log.Errorf("%v", bt)
 			m.Respond(bt)
 			return
 		}
@@ -100,53 +98,41 @@ func (n *natsCentralSystemNotifier) requestHandler() {
 		var responseChannel chan common.Response = make(chan common.Response)
 		payload, _ := json.Marshal(command.Payload)
 
-		var fn Function = n.handlers[command.Action]
+		var fn Function = this.handlers[command.Action]
 
 		go fn(command.ChargePointId, payload, responseChannel)
 
 		select {
 		case response := <-responseChannel:
 			bt, _ := json.Marshal(response)
-			log.Printf("RequestHandler => Response, %v", string(bt))
 			m.Respond(bt)
 			break
-		case <-time.After(n.timeout):
+		case <-time.After(this.timeout):
 			bt, _ := json.Marshal(common.Response{
 				Err: &common.Error{
 					Code:    "request.timeout",
 					Message: "Ha caducado el tiempo de respuesta de la solicitud",
 				},
 			})
-			log.Errorf("%v", bt)
 			m.Respond(bt)
 			break
 		}
 	})
 }
 
-func (ncs *natsCentralSystemNotifier) Start() {
-
-	if os.Getenv("ENV") == "prod" {
-		nc, err := nats.Connect(os.Getenv("NATS-CONNECTION"), nats.UserCredentials("./config/nats.creds"))
-		if err != nil {
-			log.Panic(err)
-		}
-		ncs.connection = nc
-	} else {
-		nc, err := nats.Connect(nats.DefaultURL)
-		if err != nil {
-			log.Panic(err)
-		}
-		ncs.connection = nc
+func (this *natsCentralSystemNotifier) Start() {
+	nc, err := nats.Connect(nats.DefaultURL)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	go ncs.notificationFromCentralSystem()
-	go ncs.requestHandler()
+	this.connection = nc
+	go this.notificationFromCentralSystem()
+	go this.requestHandler()
 }
 
-func (ncs *natsCentralSystemNotifier) Stop() {
-	if ncs.connection != nil {
-		ncs.connection.Close()
+func (this *natsCentralSystemNotifier) Stop() {
+	if this.connection != nil {
+		this.connection.Close()
 		log.Info("NatsStopped")
 	}
 }

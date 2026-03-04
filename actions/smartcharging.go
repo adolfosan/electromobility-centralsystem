@@ -74,9 +74,9 @@ func (this *SmartChargingProfileActions) SetChargingProfile(chargePointID string
 			case smartcharging.ChargingProfileStatusRejected:
 				logDefault(chargePointID, confirmation.GetFeatureName()).Infof("No se ha aceptado el perfil de carga")
 				message = fmt.Sprintf(" No se ha aceptado el perfil de carga")
-			/*case smartcharging.ChargingProfileStatusNotImplemented:
+			case smartcharging.ChargingProfileStatusNotImplemented:
 				logDefault(chargePointID, confirmation.GetFeatureName()).Infof("La solicitud no es soportada por el cargador")
-				message = fmt.Sprintf(" La solicitud no es soportada por el cargador")*/
+				message = fmt.Sprintf(" La solicitud no es soportada por el cargador")
 			}
 
 			payload["status"] = status
